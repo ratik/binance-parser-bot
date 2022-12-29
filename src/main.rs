@@ -1,13 +1,14 @@
-use std::{collections::HashMap, time::Instant};
-
 use binance_p2p_parser::{env::get_opts, parser::BotError, parser::Parser, tg};
+use std::time::Duration;
 use tg::Telegram;
 use tokio;
+use ttlhashmap::TtlHashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), BotError> {
     let opts = get_opts()?;
-    let mut notified: HashMap<String, Instant> = HashMap::new();
+    let mut notified: TtlHashMap<String, bool> = TtlHashMap::new(Duration::from_secs(60 * 60 * 24));
+    notified.autoclean = ttlhashmap::AutoClean::Modify;
     let parser = Parser { opts: &opts };
     let tg_api = Telegram {
         token: &opts.tg_token,
@@ -23,11 +24,9 @@ async fn main() -> Result<(), BotError> {
                 .parse::<f32>()
                 .map_err(|e| BotError::ValueError(e.to_string()))?;
             if price > opts.min_value {
-                let now = Instant::now();
-                if !notified.contains_key(&row.adv.adv_no)
-                    || now.duration_since(notified[&row.adv.adv_no]).as_secs() > 60 * 60 * 24
-                {
-                    notified.insert(row.adv.adv_no, now);
+                let key = row.adv.adv_no.clone() + &row.adv.price;
+                if !notified.contains_key(&key) {
+                    notified.insert(key, true);
                     let message = format!(
                         "New offer: {} {} for {} {} by {}",
                         row.adv.price,
